@@ -56,7 +56,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--freeze-note", default="", help="Optional note persisted in the bundle manifest.")
     parser.add_argument("--dry-run", action="store_true", help="Print the planned export request and exit.")
-    return parser.parse_args()
+    args, _ = parser.parse_known_args(); return args
 
 
 def _import_task_cfg_loader():

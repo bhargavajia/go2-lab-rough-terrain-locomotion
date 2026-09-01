@@ -12,6 +12,7 @@ blind ladder, but strips the task down to a clean deployable blind baseline:
 """
 
 from __future__ import annotations
+from go2_rough.envs.asset_contract import base_body_name, foot_body_regex, print_asset_contract
 
 import os
 
