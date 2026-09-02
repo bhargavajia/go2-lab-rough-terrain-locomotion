@@ -309,7 +309,7 @@ class Go2AsymPpoRoughBaseEnvCfg(UnitreeGo2RoughEnvCfg):
         self.rewards.track_lin_vel_xy_exp.weight = 1.5
         self.rewards.track_ang_vel_z_exp.weight = 0.75
         self.rewards.flat_orientation_l2.weight = -1.0
-        self.rewards.lin_vel_z_l2.weight = -0.1
+        self.rewards.lin_vel_z_l2.weight = -0.05    # Earlier 0.1
         self.rewards.ang_vel_xy_l2.weight = -0.075
 
         self.rewards.action_rate_l2.weight = -0.001
@@ -317,7 +317,8 @@ class Go2AsymPpoRoughBaseEnvCfg(UnitreeGo2RoughEnvCfg):
         self.rewards.dof_acc_l2.weight = -1.0e-7
         self.rewards.dof_pos_limits.weight = -0.05
 
-        self.rewards.feet_air_time.weight = 0.5
+        self.rewards.feet_air_time.weight = 1.0     # Earlier 0.5
+        self.rewards.feet_air_time.params["threshold"] = 0.5
         self.rewards.feet_slide = RewTerm(
             func=mdp.feet_slide,
             weight=-0.05,
@@ -356,7 +357,7 @@ class Go2AsymPpoRoughBaseEnvCfg(UnitreeGo2RoughEnvCfg):
 
         self.rewards.stable_progress = RewTerm(
             func=stable_progress,
-            weight=0.0,
+            weight=0.5,     # Earlier off (0 by default)
             params={
                 "command_name": "base_velocity",
                 "asset_cfg": SceneEntityCfg("robot"),
@@ -365,7 +366,7 @@ class Go2AsymPpoRoughBaseEnvCfg(UnitreeGo2RoughEnvCfg):
 
         self.rewards.adaptive_swing_recovery = RewTerm(
             func=adaptive_swing_recovery,
-            weight=0.0,
+            weight=0.3,  # Earlier off (0 by default)
             params={
                 "command_name": "base_velocity",
                 "asset_cfg": SceneEntityCfg("robot", body_names=foot_body_regex()),
