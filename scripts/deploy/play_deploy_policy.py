@@ -19,6 +19,10 @@ parser.add_argument("--command-x", type=float, default=None)
 parser.add_argument("--command-y", type=float, default=None)
 parser.add_argument("--command-yaw", type=float, default=None)
 parser.add_argument("--compare-source", action="store_true")
+parser.add_argument("--teleop", action="store_true", help="Use keyboard teleop to stream base velocity commands.")
+parser.add_argument("--teleop-max-lin-x", type=float, default=0.8)
+parser.add_argument("--teleop-max-lin-y", type=float, default=0.3)
+parser.add_argument("--teleop-max-yaw", type=float, default=0.6)
 
 try:
     from isaaclab.app import AppLauncher
@@ -53,6 +57,10 @@ import isaaclab_tasks  # noqa: F401
 import go2_rough  # noqa: F401
 
 
+def _clamp(value: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, value))
+
+
 def _unwrap_obs(obs):
     if isinstance(obs, tuple):
         return obs[0]
@@ -80,6 +88,43 @@ def _find_artifact(bundle_dir: Path, manifest: dict, suffix: str) -> Path:
     raise SystemExit(f"Could not find an artifact ending with {suffix!r} in {bundle_dir}")
 
 
+def _make_command_tensor(torch_module, device, num_envs: int, command_xyz: tuple[float, float, float]):
+    command_tensor = torch_module.zeros((num_envs, 3), device=device, dtype=torch_module.float32)
+    command_tensor[:, 0] = command_xyz[0]
+    command_tensor[:, 1] = command_xyz[1]
+    command_tensor[:, 2] = command_xyz[2]
+    return command_tensor
+
+
+def _set_base_velocity_command(env, torch_module, command_xyz: tuple[float, float, float]) -> None:
+    cmd_manager = env.unwrapped.command_manager
+    command_tensor = _make_command_tensor(
+        torch_module,
+        env.unwrapped.device,
+        env.unwrapped.num_envs,
+        command_xyz,
+    )
+    if hasattr(cmd_manager, "set_command"):
+        cmd_manager.set_command("base_velocity", command_tensor)
+        return
+    current = cmd_manager.get_command("base_velocity")
+    if current.shape[1] < 3:
+        raise RuntimeError(f"base_velocity command has unexpected shape {tuple(current.shape)}")
+    current[:, :3] = command_tensor
+
+
+def _configure_keyboard_teleop():
+    try:
+        from isaaclab.devices import Se2Keyboard
+    except ModuleNotFoundError as exc:
+        raise SystemExit(
+            "Keyboard teleop requested, but isaaclab.devices.Se2Keyboard is unavailable "
+            "in this IsaacLab build."
+        ) from exc
+
+    return Se2Keyboard()
+
+
 def main() -> int:
     bundle_dir = Path(args_cli.bundle_dir).expanduser().resolve()
     manifest_path = bundle_dir / "bundle_manifest.json"
@@ -99,18 +144,33 @@ def main() -> int:
     env_cfg = load_cfg_from_registry(args_cli.task, "env_cfg_entry_point")
     env_cfg.scene.num_envs = args_cli.num_envs
     env_cfg.seed = args_cli.seed
+    if args_cli.teleop and (
+        args_cli.command_x is not None or args_cli.command_y is not None or args_cli.command_yaw is not None
+    ):
+        raise SystemExit("Use either fixed --command-* flags or --teleop, not both.")
+
+    if args_cli.teleop and args_cli.num_envs != 1:
+        raise SystemExit("--teleop currently supports only --num-envs 1.")
+
     if (
         args_cli.command_x is not None
         or args_cli.command_y is not None
         or args_cli.command_yaw is not None
+        or args_cli.teleop
     ):
         cmd = env_cfg.commands.base_velocity
-        if args_cli.command_x is not None:
-            cmd.ranges.lin_vel_x = (args_cli.command_x, args_cli.command_x)
-        if args_cli.command_y is not None:
-            cmd.ranges.lin_vel_y = (args_cli.command_y, args_cli.command_y)
-        if args_cli.command_yaw is not None:
-            cmd.ranges.ang_vel_z = (args_cli.command_yaw, args_cli.command_yaw)
+        if args_cli.teleop:
+            cmd.ranges.lin_vel_x = (0.0, 0.0)
+            cmd.ranges.lin_vel_y = (0.0, 0.0)
+            cmd.ranges.ang_vel_z = (0.0, 0.0)
+            cmd.ranges.heading = (0.0, 0.0)
+        else:
+            if args_cli.command_x is not None:
+                cmd.ranges.lin_vel_x = (args_cli.command_x, args_cli.command_x)
+            if args_cli.command_y is not None:
+                cmd.ranges.lin_vel_y = (args_cli.command_y, args_cli.command_y)
+            if args_cli.command_yaw is not None:
+                cmd.ranges.ang_vel_z = (args_cli.command_yaw, args_cli.command_yaw)
         cmd.resampling_time_range = (1.0e9, 1.0e9)
         cmd.rel_standing_envs = 0.0
         cmd.rel_heading_envs = 0.0
@@ -133,6 +193,15 @@ def main() -> int:
             source_policy.eval()
 
         obs = _unwrap_obs(env.reset())
+        keyboard = None
+        commanded = (0.0, 0.0, 0.0)
+        if args_cli.teleop:
+            keyboard = _configure_keyboard_teleop()
+            print(
+                "Keyboard teleop enabled. Use the IsaacLab Se2Keyboard mappings in the simulator window."
+            )
+            _set_base_velocity_command(env, torch, commanded)
+
         reward_sum = torch.zeros(env.unwrapped.num_envs, device=device)
         done_count = 0
         action_abs_max = 0.0
@@ -141,6 +210,16 @@ def main() -> int:
         diff_samples = 0
 
         for _step_idx in range(args_cli.max_steps):
+            if keyboard is not None:
+                command_now = keyboard.advance()
+                if command_now is not None:
+                    commanded = (
+                        _clamp(float(command_now[0]), -args_cli.teleop_max_lin_x, args_cli.teleop_max_lin_x),
+                        _clamp(float(command_now[1]), -args_cli.teleop_max_lin_y, args_cli.teleop_max_lin_y),
+                        _clamp(float(command_now[2]), -args_cli.teleop_max_yaw, args_cli.teleop_max_yaw),
+                    )
+                _set_base_velocity_command(env, torch, commanded)
+
             policy_obs = obs["policy"]
             history_obs = obs["policy_history"]
             with torch.inference_mode():
