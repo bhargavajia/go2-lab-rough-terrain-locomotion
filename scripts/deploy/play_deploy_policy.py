@@ -165,7 +165,10 @@ class KeyboardTeleopController:
 
     def close(self) -> None:
         if self._subscription is not None:
-            self._input.unsubscribe_from_keyboard_events(self._keyboard, self._subscription)
+            if hasattr(self._input, "unsubscribe_to_keyboard_events"):
+                self._input.unsubscribe_to_keyboard_events(self._keyboard, self._subscription)
+            elif hasattr(self._input, "unsubscribe_from_keyboard_events"):
+                self._input.unsubscribe_from_keyboard_events(self._keyboard, self._subscription)
             self._subscription = None
 
 
