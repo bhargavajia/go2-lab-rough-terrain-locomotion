@@ -7,6 +7,7 @@ import argparse
 import json
 from pathlib import Path
 import sys
+from typing import Any
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--bundle-dir", required=True)
@@ -113,16 +114,63 @@ def _set_base_velocity_command(env, torch_module, command_xyz: tuple[float, floa
     current[:, :3] = command_tensor
 
 
-def _configure_keyboard_teleop():
-    try:
-        from isaaclab.devices import Se2Keyboard
-    except ModuleNotFoundError as exc:
-        raise SystemExit(
-            "Keyboard teleop requested, but isaaclab.devices.Se2Keyboard is unavailable "
-            "in this IsaacLab build."
-        ) from exc
+class KeyboardTeleopController:
+    """Version-robust keyboard teleop built directly on IsaacSim keyboard events."""
 
-    return Se2Keyboard()
+    def __init__(self) -> None:
+        try:
+            import carb
+            import omni.appwindow as appwindow
+        except ModuleNotFoundError as exc:
+            raise SystemExit(
+                "Keyboard teleop requested, but IsaacSim keyboard APIs (carb/omni.appwindow) are unavailable."
+            ) from exc
+
+        self._carb = carb
+        app_window = appwindow.get_default_app_window()
+        if app_window is None:
+            raise SystemExit("Keyboard teleop requested, but no default IsaacSim app window was found.")
+
+        keyboard = app_window.get_keyboard()
+        if keyboard is None:
+            raise SystemExit("Keyboard teleop requested, but IsaacSim keyboard device was not found.")
+
+        self._input = carb.input.acquire_input_interface()
+        self._keyboard = keyboard
+        self._pressed: set[Any] = set()
+        self._subscription = self._input.subscribe_to_keyboard_events(self._keyboard, self._on_keyboard_event)
+
+    def _on_keyboard_event(self, event, *_) -> bool:
+        keyboard_event_type = self._carb.input.KeyboardEventType
+        if event.type in (keyboard_event_type.KEY_PRESS, keyboard_event_type.KEY_REPEAT):
+            self._pressed.add(event.input)
+        elif event.type == keyboard_event_type.KEY_RELEASE:
+            self._pressed.discard(event.input)
+        return True
+
+    def advance(self) -> tuple[float, float, float]:
+        key = self._carb.input.KeyboardInput
+
+        forward = float((key.W in self._pressed) or (key.UP in self._pressed))
+        backward = float((key.S in self._pressed) or (key.DOWN in self._pressed))
+        left_strafe = float(key.A in self._pressed)
+        right_strafe = float(key.D in self._pressed)
+        yaw_left = float((key.LEFT in self._pressed) or (key.Q in self._pressed))
+        yaw_right = float((key.RIGHT in self._pressed) or (key.E in self._pressed))
+
+        vx = forward - backward
+        vy = left_strafe - right_strafe
+        yaw = yaw_left - yaw_right
+        return (vx, vy, yaw)
+
+    def close(self) -> None:
+        if self._subscription is not None:
+            self._input.unsubscribe_from_keyboard_events(self._keyboard, self._subscription)
+            self._subscription = None
+
+
+def _configure_keyboard_teleop():
+    return KeyboardTeleopController()
 
 
 def main() -> int:
@@ -177,6 +225,7 @@ def main() -> int:
         cmd.heading_command = False
 
     env = None
+    keyboard = None
     try:
         env = gym.make(args_cli.task, cfg=env_cfg, render_mode=None)
         device = env.unwrapped.device
@@ -193,12 +242,12 @@ def main() -> int:
             source_policy.eval()
 
         obs = _unwrap_obs(env.reset())
-        keyboard = None
         commanded = (0.0, 0.0, 0.0)
         if args_cli.teleop:
             keyboard = _configure_keyboard_teleop()
             print(
-                "Keyboard teleop enabled. Use the IsaacLab Se2Keyboard mappings in the simulator window."
+                "Keyboard teleop enabled: W/S or Up/Down = forward/back, A/D = strafe, "
+                "Left/Right or Q/E = yaw."
             )
             _set_base_velocity_command(env, torch, commanded)
 
@@ -256,6 +305,8 @@ def main() -> int:
         print(json.dumps(report, indent=2))
         return 0
     finally:
+        if keyboard is not None and hasattr(keyboard, "close"):
+            keyboard.close()
         if env is not None:
             env.close()
         simulation_app.close()
