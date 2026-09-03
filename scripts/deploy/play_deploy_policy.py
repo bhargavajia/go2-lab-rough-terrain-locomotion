@@ -13,7 +13,12 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--bundle-dir", required=True)
 parser.add_argument("--task", required=True)
 parser.add_argument("--num-envs", type=int, default=16)
-parser.add_argument("--max-steps", type=int, default=500)
+parser.add_argument(
+    "--max-steps",
+    type=int,
+    default=0,
+    help="Maximum control steps before exit. Use 0 (default) to run until interrupted.",
+)
 parser.add_argument("--seed", type=int, default=999)
 parser.add_argument("--json-out", type=str, default=None)
 parser.add_argument("--command-x", type=float, default=None)
@@ -261,7 +266,8 @@ def main() -> int:
         source_export_abs_diff_mean_sum = 0.0
         diff_samples = 0
 
-        for _step_idx in range(args_cli.max_steps):
+        step_count = 0
+        while args_cli.max_steps <= 0 or step_count < args_cli.max_steps:
             if keyboard is not None:
                 command_now = keyboard.advance()
                 if command_now is not None:
@@ -287,6 +293,7 @@ def main() -> int:
             obs = _unwrap_obs(obs)
             reward_sum += rewards
             done_count += int(dones.sum().item())
+            step_count += 1
 
         report = {
             "status": "ok",
@@ -294,6 +301,7 @@ def main() -> int:
             "task": args_cli.task,
             "num_envs": args_cli.num_envs,
             "max_steps": args_cli.max_steps,
+            "executed_steps": step_count,
             "mean_reward_sum": float(reward_sum.mean().item()),
             "done_count": done_count,
             "action_abs_max": action_abs_max,
