@@ -33,7 +33,7 @@ class Go2TerrainLocomotionStairsEnvCfg(Go2TerrainLocomotionRoughEnvCfg):
 
         for terrain_name in ("pyramid_stairs", "pyramid_stairs_inv"):
             terrain_cfg = terrain_gen.sub_terrains[terrain_name]
-            terrain_cfg.step_height_range = (0.12, 0.12)
+            terrain_cfg.step_height_range = (0.01, 0.12)
             terrain_cfg.step_width = 0.30
             terrain_cfg.platform_width = 3.0
         
