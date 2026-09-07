@@ -7,7 +7,7 @@ source "${SCRIPT_DIR}/env.sh"
 usage() {
  cat <<'EOF'
 Usage:
- play.sh [--bundle-name name] [--task task]
+ play.sh [--bundle-name name] [--task task] [-- <play_args...>]
  play.sh /path/to/exported/bundle
 EOF
 }
@@ -15,6 +15,7 @@ EOF
 BUNDLE_NAME="go2_candidate_bundle"
 TASK_NAME="Go2-Terrain-Locomotion-Stairs-Eval-V1"
 BUNDLE_DIR=""
+FORWARD_ARGS=()
 
 while [[ $# -gt 0 ]]; do
  case "$1" in
@@ -40,9 +41,7 @@ while [[ $# -gt 0 ]]; do
      ;;
    --)
      shift
-     if [[ $# -gt 0 ]]; then
-       BUNDLE_DIR="$(realpath "$1")"
-     fi
+     FORWARD_ARGS=("$@")
      break
      ;;
    -*)
@@ -79,4 +78,4 @@ exec bash scripts/isaaclab_user.sh -p scripts/deploy/play_deploy_policy.py \
   --bundle-dir "${BUNDLE_DIR}" \
   --task "${TASK_NAME}" \
   --num-envs 4 \
-  "$@"
+  "${FORWARD_ARGS[@]}"
