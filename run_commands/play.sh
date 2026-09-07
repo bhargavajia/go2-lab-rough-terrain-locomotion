@@ -13,7 +13,7 @@ EOF
 }
 
 BUNDLE_NAME="go2_candidate_bundle"
-TASK_NAME="Go2-Terrain-Locomotion-Stairs-V1"
+TASK_NAME="Go2-Terrain-Locomotion-Stairs-Eval-V1"
 BUNDLE_DIR=""
 
 while [[ $# -gt 0 ]]; do

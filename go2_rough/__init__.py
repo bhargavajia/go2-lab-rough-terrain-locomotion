@@ -39,3 +39,9 @@ _register_task(
     "go2_rough.envs.terrain_locomotion.stairs_mjlab_cfg:Go2TerrainLocomotionStairsEnvCfg",
     "go2_rough.models.terrain_locomotion.stairs_ppo_cfg:Go2TerrainLocomotionStairsRunnerCfg",
 )
+
+_register_task(
+    "Go2-Terrain-Locomotion-Stairs-Eval-V1",
+    "go2_rough.envs.terrain_locomotion.stairs_eval_mjlab_cfg:Go2TerrainLocomotionStairsEvalEnvCfg",
+    "go2_rough.models.terrain_locomotion.stairs_ppo_cfg:Go2TerrainLocomotionStairsRunnerCfg",
+)
