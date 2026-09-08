@@ -7,14 +7,16 @@ source "${SCRIPT_DIR}/env.sh"
 usage() {
  cat <<'EOF'
 Usage:
- play_teleop.sh [--bundle-name name] [--task task]
+ play_teleop.sh [--bundle-name name] [--task task] [--num-envs 1] [-- <play_args...>]
  play_teleop.sh /path/to/exported/bundle
 EOF
 }
 
 BUNDLE_NAME="go2_candidate_bundle"
 TASK_NAME="Go2-Terrain-Locomotion-Stairs-Eval-V1"
+NUM_ENVS="1"
 BUNDLE_DIR=""
+FORWARD_ARGS=()
 
 while [[ $# -gt 0 ]]; do
  case "$1" in
@@ -34,12 +36,21 @@ while [[ $# -gt 0 ]]; do
      TASK_NAME="${1#*=}"
      shift
      ;;
+   --num-envs)
+     NUM_ENVS="${2:-}"
+     shift 2
+     ;;
+   --num-envs=*)
+     NUM_ENVS="${1#*=}"
+     shift
+     ;;
    -h|--help)
      usage
      exit 0
      ;;
    --)
      shift
+     FORWARD_ARGS=("$@")
      break
      ;;
    -*)
@@ -75,6 +86,6 @@ cd "${REPO}"
 exec bash scripts/isaaclab_user.sh -p scripts/deploy/play_deploy_policy.py \
   --bundle-dir "${BUNDLE_DIR}" \
   --task "${TASK_NAME}" \
-  --num-envs 1 \
+  --num-envs "${NUM_ENVS}" \
   --teleop \
-  "$@"
+  "${FORWARD_ARGS[@]}"

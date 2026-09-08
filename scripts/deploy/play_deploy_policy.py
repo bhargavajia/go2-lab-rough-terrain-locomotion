@@ -236,6 +236,10 @@ def main() -> int:
     keyboard = None
     try:
         env = gym.make(args_cli.task, cfg=env_cfg, render_mode=None)
+        print(
+            f"[INFO] Deploy play env initialized: task={args_cli.task}, "
+            f"num_envs={env.unwrapped.num_envs}, seed={args_cli.seed}"
+        )
         device = env.unwrapped.device
         policy = torch.jit.load(str(policy_path), map_location=device)
         policy.eval()
